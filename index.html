@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1d2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>26 no Bolso</title>
+  <meta name="description" content="26 no Bolso — jogo 2D no navegador.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="c"></canvas>
+
+    <!-- Menu inicial -->
+    <section id="menu" class="overlay">
+      <h1 id="title"></h1>
+
+      <div class="row">
+        <div class="group">
+          <h2>Dificuldade</h2>
+          <div id="difficulties" class="choices"></div>
+        </div>
+      </div>
+
+      <button id="start" class="primary">Começar</button>
+      <p class="hint">Debates: ← → andam, ESPAÇO pula, Z soco • respostas: 1–4 ou toque • Urna: teclado numérico e Enter • Ponte: setas / WASD ou arraste o dedo • M som • P pausa</p>
+      <p id="best" class="hint"></p>
+    </section>
+
+    <!-- Fim de jogo -->
+    <section id="end" class="overlay hidden">
+      <h1 id="endTitle"></h1>
+      <p id="endText" class="tagline"></p>
+      <div class="row">
+        <button id="retry" class="primary">Tentar de novo</button>
+        <button id="change" class="secondary">Menu</button>
+      </div>
+    </section>
+
+    <!-- Fase 2: perguntas do debate na Globo -->
+    <section id="quiz" class="hidden">
+      <div id="qNum"></div>
+      <div id="qSay"><span id="qWho" class="L">LULA</span><p id="qLine"></p><button id="qNext" class="primary hidden">Continuar ▶</button></div>
+      <div id="qOpts" class="hidden"></div>
+    </section>
+
+    <!-- Resultado dos debates (Fases 1 e 2) -->
+    <section id="dResult" class="overlay hidden">
+      <h1 id="dTitle"></h1>
+      <p id="dText" class="tagline"></p>
+      <div class="row">
+        <button id="dNext" class="primary hidden">Continuar</button>
+        <button id="dRetry" class="primary hidden">Tentar de novo</button>
+        <button id="dMenu" class="secondary">Menu</button>
+      </div>
+    </section>
+
+    <!-- Fases 3 e 4: urna eletrônica -->
+    <section id="urna" class="hidden">
+      <header id="uHud">
+        <div class="uCand f">
+          <div class="uName">FLÁVIO</div>
+          <div class="uPct" id="uPctF">0%</div>
+          <div class="uBar"><i id="uBarF"></i></div>
+        </div>
+        <div id="uTimerBox">
+          <div class="uPhase" id="uPhase"></div>
+          <div id="uTimer">0:30</div>
+          <div id="uTicker">&nbsp;</div>
+          <div id="uNulls"></div>
+        </div>
+        <div class="uCand l">
+          <div class="uName">LULA</div>
+          <div class="uPct" id="uPctL">0%</div>
+          <div class="uBar"><i id="uBarL"></i></div>
+        </div>
+      </header>
+
+      <div id="uMachine">
+        <div id="uScreen">
+          <div id="uMain">
+            <div class="uSmall">SEU VOTO PARA</div>
+            <div class="uTitle">PRESIDENTE</div>
+            <div class="uNumRow"><span class="uLbl">Número:</span><span class="uBox" id="uD0"></span><span class="uBox" id="uD1"></span></div>
+            <div id="uInfo"></div>
+            <div id="uFoot">Aperte a tecla:<br><b class="g">VERDE</b> para CONFIRMAR este voto<br><b class="o">LARANJA</b> para REINICIAR este voto</div>
+          </div>
+          <div id="uPhoto" class="hidden">
+            <div class="uFrame" id="uFrame"><canvas id="uPortrait" width="360" height="440"></canvas><canvas id="uPortrait2" width="360" height="440"></canvas></div>
+            <div class="uCap">Presidente</div>
+          </div>
+          <div id="uFim" class="hidden"><span>FIM</span></div>
+          <div id="uMsg" class="hidden"></div>
+        </div>
+        <div id="uPad">
+          <div class="uBrand">URNA ELETRÔNICA</div>
+          <div id="uNums"></div>
+          <div id="uActs">
+            <button class="uAct white" data-k="branco">BRANCO</button>
+            <button class="uAct orange" data-k="corrige">CORRIGE</button>
+            <button class="uAct green" data-k="confirma" id="uConfirm">CONFIRMA</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="uResult" class="overlay hidden">
+        <h1 id="uResTitle"></h1>
+        <p id="uResText" class="tagline"></p>
+        <div class="row">
+          <button id="uNext" class="primary hidden">Continuar</button>
+          <button id="uRetry" class="primary hidden">Tentar de novo</button>
+          <button id="uMenu" class="secondary">Menu</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="pause" class="overlay hidden"><h1>Pausado</h1><p class="hint">Toque ou pressione P para continuar</p></section>
+
+    <button id="muteBtn" aria-label="Som">🔊</button>
+    <div id="rotate" class="overlay hidden"><h1>📱↻</h1><p class="tagline">Gire o celular para jogar na horizontal</p></div>
+  </div>
+  <script src="sprites.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
