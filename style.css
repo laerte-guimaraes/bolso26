@@ -1,10 +1,10 @@
 :root { --bg:#0b1d2e; --fg:#f4f1e8; --accent:#ffcf33; --muted:#8fa5b8; --card:rgba(8,20,32,.86); }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-html, body { margin:0; height:100%; background:#050e17; color:var(--fg);
+html, body { margin:0; height:100%; height:100dvh; background:#050e17; color:var(--fg);
   font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow:hidden; overscroll-behavior:none; }
 body { display:grid; place-items:center; }
 
-#stage { position:relative; width:min(100vw, calc(100vh * 16 / 9)); aspect-ratio:16/9;
+#stage { position:relative; width:min(100vw, calc(100vh * 16 / 9)); width:min(100vw, calc(100dvh * 16 / 9)); aspect-ratio:16/9;
   background:var(--bg); touch-action:none; user-select:none; -webkit-user-select:none; --u:1px; }
 #c { position:absolute; inset:0; width:100%; height:100%; display:block; }
 
@@ -36,7 +36,8 @@ button.secondary { background:#24445f; }
 #muteBtn { position:absolute; right:calc(10*var(--u)); bottom:calc(8*var(--u)); background:rgba(0,0,0,.35); border:0;
   border-radius:50%; width:calc(34*var(--u)); height:calc(34*var(--u)); font-size:calc(16*var(--u)); line-height:1; padding:0; }
 
-#rotate { display:none; z-index:10; background:var(--bg); }
+#rotate { display:none; position:fixed; inset:0; z-index:40; background:var(--bg); }
+#rotate h1 { font-size:22vmin; } #rotate .tagline { font-size:5.2vmin; max-width:80vw; }
 @media (orientation:portrait) and (max-width:700px) {
   #rotate { display:flex !important; }
 }
@@ -153,3 +154,15 @@ button.secondary { background:#24445f; }
 #menu.cine .hint { font-size:calc(11*var(--u)); }
 .choice.small { font-size:calc(12*var(--u)); padding:calc(5*var(--u)) calc(10*var(--u)); min-width:0; }
 @keyframes menuIn { from { opacity:0; transform:translateY(calc(14*var(--u))); } to { opacity:1; transform:none; } }
+
+/* ================= Tela de entrada (tela cheia no celular) ================= */
+#gate { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3vmin; padding:4vmin; text-align:center;
+  background:radial-gradient(ellipse at 50% 85%, #ff9a55 0%, #8a2f7c 38%, #171243 78%); }
+#gate.hidden { display:none; }
+#gate h1 { margin:0; font-size:min(16vw, 17vh); line-height:1; letter-spacing:.01em; text-shadow:0 .04em .12em rgba(20,6,30,.7); }
+#gate h1 span { color:#fff; } #gate h1 b { color:#ffcf33; }
+#gate .primary { font-size:min(6vw, 7vh); padding:.55em 1.3em; border-radius:.7em; animation:gatePulse 1.4s ease-in-out infinite; }
+.gateSub { margin:0; font-size:min(3.4vw, 4.2vh); color:#ffe7c4; max-width:34em; }
+.gateRot { display:none; margin:0; font-size:min(4vw, 4.6vh); font-weight:800; color:#fff; }
+@media (orientation:portrait) { .gateRot { display:block; } }
+@keyframes gatePulse { 50% { transform:scale(1.06); } }

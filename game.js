@@ -1267,7 +1267,7 @@ function draw() {
   const g = G;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (state === 'intro' || state === 'menu') { drawIntro(); return; }
+  if (state === 'intro' || state === 'menu' || state === 'gate') { drawIntro(); return; }
   if (band) { drawBand(); return; }
   if (quiz) { drawQuiz(); return; }
   if (frd && (state === 'fraud' || state === 'fraudEnd')) { drawFraudScene(); return; }
@@ -1864,6 +1864,7 @@ function resize() {
   stage.style.setProperty('--u', (r.width / W) + 'px');
 }
 addEventListener('resize', resize);
+['fullscreenchange', 'webkitfullscreenchange', 'orientationchange'].forEach(ev => addEventListener(ev, () => setTimeout(resize, 120)));
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -1881,7 +1882,26 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-initMenu(); initUrna(); resize();
+/* ---------- tela de entrada: pede tela cheia + paisagem (celular) ---------- */
+function enterFullscreen() {
+  const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  const lock = () => { try { const p = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (p && p.catch) p.catch(() => {}); } catch {} };
+  try { const p = rq && rq.call(el, { navigationUI: 'hide' }); if (p && p.then) p.then(lock).catch(() => {}); else lock(); } catch {}
+}
+function initGate() {
+  const standalone = (window.matchMedia && (matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches)) || navigator.standalone;
+  const want = (touchUI || /[?&]gate=1/.test(location.search)) && !standalone && !document.fullscreenElement;
+  if (!want) return;
+  state = 'gate'; $('#gate').classList.remove('hidden');
+  const canFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  $('#gateIos').classList.toggle('hidden', canFs);
+  $('#gateBtn').onclick = () => {
+    if (canFs) enterFullscreen();
+    try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch {}   // o toque também libera o som
+    $('#gate').classList.add('hidden'); state = 'intro'; intro.t = 0; setTimeout(resize, 200);
+  };
+}
+initMenu(); initUrna(); initGate(); resize();
 requestAnimationFrame(frame);
 
 // teste/depuração via console: window.__game

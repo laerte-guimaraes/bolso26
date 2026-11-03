@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#0b1d2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <title>Bolso 26</title>
   <meta name="description" content="Bolso 26 — jogo 2D no navegador.">
   <link rel="stylesheet" href="style.css">
@@ -125,6 +128,14 @@
 
     <button id="muteBtn" aria-label="Som">🔊</button>
     <div id="rotate" class="overlay hidden"><h1>📱↻</h1><p class="tagline">Gire o celular para jogar na horizontal</p></div>
+  </div>
+  <!-- Tela de entrada (celular): o toque pede tela cheia + paisagem antes de começar -->
+  <div id="gate" class="hidden">
+    <h1><span>BOLSO</span> <b>26</b></h1>
+    <button id="gateBtn" class="primary">▶ Toque para jogar</button>
+    <p class="gateSub">O jogo abre em <b>tela cheia</b>, na horizontal.</p>
+    <p class="gateRot">📱↻ Gire o celular para a horizontal</p>
+    <p id="gateIos" class="gateSub hidden">No iPhone: toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b> para jogar em tela cheia.</p>
   </div>
   <script src="sprites.js"></script>
   <script src="game.js"></script>
