@@ -143,3 +143,13 @@ button.secondary { background:#24445f; }
   padding:calc(5*var(--u)) calc(10*var(--u)); background:#173a73; border:calc(2*var(--u)) solid transparent; border-radius:calc(10*var(--u)); cursor:pointer; }
 .qOpt i { flex:none; display:grid; place-items:center; width:calc(22*var(--u)); height:calc(22*var(--u)); border-radius:50%; background:#ffcf33; color:#1a1300; font-style:normal; font-weight:900; font-size:calc(12*var(--u)); }
 .qOpt:hover { background:#21509b; border-color:#7fc0ff; }
+
+/* ================= Abertura / menu sobre a arte conceitual ================= */
+#menu.cine { justify-content:flex-end; gap:calc(5*var(--u)); padding-bottom:calc(10*var(--u)); animation:menuIn .9s ease-out both;
+  background:linear-gradient(to bottom, transparent 56%, rgba(10,8,22,.88) 76%); }
+#menu.cine #title { display:none; }
+#menu.cine.hidden { display:none; }
+#menu.cine h2 { margin-bottom:calc(3*var(--u)); }
+#menu.cine .hint { font-size:calc(11*var(--u)); }
+.choice.small { font-size:calc(12*var(--u)); padding:calc(5*var(--u)) calc(10*var(--u)); min-width:0; }
+@keyframes menuIn { from { opacity:0; transform:translateY(calc(14*var(--u))); } to { opacity:1; transform:none; } }

@@ -5,7 +5,7 @@
    CONFIG — troque textos, personagem e dificuldades aqui
    ========================================================= */
 const CONFIG = {
-  title: '26 no Bolso',
+  title: 'Bolso 26',
   levelName: 'FASE 5',
   timeLimit: 40,                 // segundos para chegar ao avião
   urna: {
@@ -73,11 +73,11 @@ const CONFIG = {
   cuffedStamp: 'PRESO!',
   eggLine: 'Acho melhor você dar o fora daqui tá okey?',
   difficulties: [
-    { id: 'facil',   name: 'Fácil',   lives: 5, speed: 0.85, density: 0.65, length: 5200,
+    { id: 'facil',   name: 'Fácil',   time: 40, lives: 5, speed: 0.85, density: 0.65, length: 5200,
       fight: { lulaHp: 80,  lulaDmg: 5, speed: 85,  cd: 1.6,  wind: .50, armor: .25, retreat: .4,  combo: .05, block: .06 } },   // luta (Band): vida do Lula, dano, velocidade, pausa entre golpes…
-    { id: 'normal',  name: 'Normal',  lives: 5, speed: 1.00, density: 1.00, length: 6400,
+    { id: 'normal',  name: 'Normal',  time: 40, lives: 5, speed: 1.00, density: 1.00, length: 6400,
       fight: { lulaHp: 140, lulaDmg: 8, speed: 110, cd: .85,  wind: .38, armor: .65, retreat: .25, combo: .3,  block: .25 } },
-    { id: 'dificil', name: 'Difícil', lives: 3, speed: 1.25, density: 1.35, length: 7600,
+    { id: 'dificil', name: 'Difícil', time: 35, lives: 3, speed: 1.25, density: 1.35, length: 7600,
       fight: { lulaHp: 210, lulaDmg: 11, speed: 140, cd: .55, wind: .28, armor: .9, retreat: .1,  combo: .5,  block: .4 } },
   ],
 };
@@ -86,6 +86,7 @@ const CONFIG = {
 const W = 960, H = 540;
 const ROAD_TOP = 120, ROAD_BOT = 460, MID = (ROAD_TOP + ROAD_BOT) / 2;
 const PLAYER_R = 11, PLAYER_SPEED = 200;
+const FALL_TIME = 1.0, FALL_ANIM = .22;       // ao perder uma vida o Flávio cai e fica parado 1s
 const FINISH_PAD = 140;           // distância do avião até o fim do mundo
 const TIME_LIMIT = CONFIG.timeLimit;
 // linha do tempo (s) da cena de tempo esgotado
@@ -145,7 +146,7 @@ const sfx = {
 
 /* ---------- estado ---------- */
 const sel = { diff: store.get('diff', 'normal') };          // controle é sempre livre
-let state = 'menu';               // menu | play | paused | end
+let state = 'intro';              // intro | menu | play | paused | end …
 let G = null;                     // estado da partida
 let band = null, quiz = null;     // debates: Fase 1 (luta na Band) e Fase 2 (quiz na Globo)
 let scale = 1;
@@ -171,6 +172,7 @@ function initMenu() {
   buildChoices($('#difficulties'), CONFIG.difficulties, 'diff', d => d.name);
   updateBest();
   $('#muteBtn').textContent = muted ? '🔇' : '🔊';
+  $('#menu').classList.add('hidden');                         // o menu só aparece no fim da abertura
 }
 
 /* ---------- geração da fase ---------- */
@@ -210,7 +212,7 @@ function newGame() {
     diff, L, cpX, obs, gates,
     p: { x: 60, y: MID, vx: 0, vy: 0, face: 1, step: 0 },
     lives: diff.lives, inv: 0, shake: 0, time: 0, t: 0, over: null, flash: 0,
-    auto: false, cam: 0, tick: null, cs: null, bonus: 0, eggUsed: false, egg: null, bonusAt: -99,
+    auto: false, cam: 0, tick: null, cs: null, bonus: 0, eggUsed: false, egg: null, bonusAt: -99, downAt: -99,
   };
 }
 
@@ -220,6 +222,7 @@ const touch = { on: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+  if (state === 'intro') { if (k === 'm') toggleMute(); else if (!e.repeat) skipIntro(); return; }
   if (state === 'band') {
     if (k === 'm') toggleMute();
     else if (!e.repeat && band && PUNCH_KEYS.includes(k)) band.punchBuf = .22;
@@ -248,6 +251,7 @@ const bandPtr = new Map();         // pointerId -> 'left' | 'right' (botões de 
 const touchUI = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const BTN = { left: { x: 70, y: 468, r: 46 }, right: { x: 176, y: 468, r: 46 }, punch: { x: 884, y: 462, r: 56 }, jump: { x: 774, y: 478, r: 42 } };
 canvas.addEventListener('pointerdown', e => {
+  if (state === 'intro') { skipIntro(); return; }
   if (state === 'band' && band && !band.over) {
     const p = toLogical(e), hit = n => Math.hypot(p.x - BTN[n].x, p.y - BTN[n].y) < BTN[n].r + 14;
     if (hit('left')) { bandPtr.set(e.pointerId, 'left'); canvas.setPointerCapture(e.pointerId); }
@@ -283,10 +287,14 @@ function inputVec() {
 }
 
 /* ---------- fluxo ---------- */
+let curPhase = 'band';                                      // fase atual: band | globo | urna1 | urna2 | bridge
 function startGame() { startBand(); }                      // o jogo começa pelo debate da Band
-const retryFn = () => startBand();                         // "Tentar de novo" sempre recomeça do início (debate da Band); não dá para continuar
+function retryFn() {                                        // "Tentar de novo" recomeça a MESMA fase (depois de vencer o jogo, recomeça do início)
+  if (G && G.over === 'win') return startBand();
+  ({ band: startBand, globo: startQuiz, urna1: () => startUrna(1), urna2: () => startUrna(2), bridge: startBridge }[curPhase] || startBand)();
+}
 function startBridge() {
-  G = newGame(); state = 'play'; band = quiz = null;
+  G = newGame(); state = 'play'; band = quiz = null; curPhase = 'bridge';
   $('#urna').classList.add('hidden'); $('#quiz').classList.add('hidden'); $('#dResult').classList.add('hidden');
   $('#menu').classList.add('hidden'); $('#end').classList.add('hidden'); $('#end').classList.remove('scene'); $('#pause').classList.add('hidden');
   sfx.start();
@@ -295,6 +303,7 @@ function endGame(won, reason) {
   const timeout = reason === 'timeout';
   state = 'end'; G.over = won ? 'win' : 'lose';
   if (won) {
+    store.set('done', true);                                   // jogo concluído: libera a escolha de fase no menu
     sfx.win();
     const key = 'best.' + sel.diff, best = store.get(key, null);
     if (!best || G.time < best) store.set(key, G.time);
@@ -332,7 +341,7 @@ function skipCut() {
 }
 /* ---------- easter egg: grade sob o 5º pilar ----------
    Pausa o cronômetro, mostra o Jair (macacão de preso) abraçando o jogador, e devolve +5s. */
-const limitOf = g => TIME_LIMIT + g.bonus;
+const limitOf = g => (g.diff.time || TIME_LIMIT) + g.bonus;       // tempo da ponte depende da dificuldade (difícil = 35s)
 function startEgg() {
   const g = G;
   state = 'egg'; g.eggUsed = true; g.inv = 0; touch.on = false;
@@ -383,7 +392,7 @@ function toggleMute() { muted = !muted; store.set('muted', muted); $('#muteBtn')
 
 $('#start').onclick = startGame;
 $('#retry').onclick = () => retryFn();
-$('#change').onclick = () => { state = 'menu'; $('#end').classList.add('hidden'); $('#menu').classList.remove('hidden'); G = null; band = quiz = null; };
+$('#change').onclick = () => { $('#end').classList.add('hidden'); G = null; band = quiz = null; showMenu(); };
 $('#pause').onclick = () => togglePause();
 $('#muteBtn').onclick = e => { e.stopPropagation(); toggleMute(); };
 
@@ -416,7 +425,7 @@ function duelPrimary() {
 /* ---------- Fase 1: luta na Band ---------- */
 function startBand() {
   const diff = CONFIG.difficulties.find(d => d.id === sel.diff) || CONFIG.difficulties[1], fc = diff.fight;
-  G = null; urna = null; frd = null; zn = null; quiz = null; state = 'band'; resetScreens();
+  G = null; urna = null; frd = null; zn = null; quiz = null; state = 'band'; curPhase = 'band'; resetScreens();
   const mk = (x, face, hp) => ({ x, face, hp, max: hp, sh: hp, pt: -1, hit: false, stun: 0, kb: 0, step: 0, down: 0, jy: 0, jv: 0 });
   band = { diff, fc, t: 0, clock: CONFIG.duel.bandTime, over: null, overT: 0, shake: 0, flash: 0, slow: 1, tick: null, punchBuf: 0, jumpBuf: 0, bell: false,
            pops: [], sparks: [], f: mk(340, 1, 100), l: Object.assign(mk(620, -1, fc.lulaHp), { st: 'idle', stT: 0, cd: 1.2, combo: 0 }) };
@@ -625,7 +634,7 @@ function drawDuelHud(title, center, fF, fT, lF, lT, urgent, colors, noBars) {
 /* ---------- Fase 2: debate na Globo (cutscene de diálogo) ----------
    O Lula fala (texto digitado) → o jogador escolhe a fala do Flávio → o Lula reage → a barra de quem se saiu melhor enche. */
 function startQuiz() {
-  G = null; urna = null; frd = null; zn = null; band = null; state = 'quiz'; resetScreens();
+  G = null; urna = null; frd = null; zn = null; band = null; state = 'quiz'; curPhase = 'globo'; resetScreens();
   const pool = CONFIG.quiz, n = Math.min(CONFIG.duel.questions, pool.length);
   quiz = { t: 0, order: shuffle(pool.map((_, i) => i)).slice(0, n), i: -1, phase: 'intro', ok: 0, pF: 0, pL: 0, sF: 0, sL: 0, hurtF: 0, hurtL: 0, pops: [], sparks: [],
            q: null, opts: [], ci: 0, pick: -1, shown: false, who: 'L', line: '', typed: 0, typing: false, hold: 0, blip: 0 };
@@ -871,12 +880,12 @@ function initUrna() {
   $('#qNext').onclick = () => quizNext();
   $('#qSay').addEventListener('pointerdown', () => quizAdvance());
   $('#dNext').onclick = () => duelPrimary(); $('#dRetry').onclick = () => retryFn();
-  $('#dMenu').onclick = () => { state = 'menu'; band = quiz = null; $('#dResult').classList.add('hidden'); $('#menu').classList.remove('hidden'); };
-  $('#uMenu').onclick = () => { state = 'menu'; urna = null; band = quiz = null; $('#urna').classList.add('hidden'); $('#menu').classList.remove('hidden'); };
+  $('#dMenu').onclick = () => { band = quiz = null; $('#dResult').classList.add('hidden'); showMenu(); };
+  $('#uMenu').onclick = () => { urna = null; band = quiz = null; $('#urna').classList.add('hidden'); showMenu(); };
 }
 function startUrna(round = 1) {
   const diff = CONFIG.difficulties.find(d => d.id === sel.diff) || CONFIG.difficulties[1], cfg = CONFIG.urna, rd = cfg.rounds[round - 1];
-  state = 'urna'; G = null; frd = null; zn = null; band = quiz = null;
+  state = 'urna'; G = null; frd = null; zn = null; band = quiz = null; curPhase = 'urna' + round;
   $('#quiz').classList.add('hidden'); $('#dResult').classList.add('hidden');
   $('#menu').classList.add('hidden'); $('#end').classList.add('hidden'); $('#end').classList.remove('scene'); $('#pause').classList.add('hidden');
   $('#uResult').classList.add('hidden'); $('#urna').classList.remove('hidden');
@@ -1171,9 +1180,11 @@ function update(dt) {
   g.inv = Math.max(0, g.inv - dt); g.shake = Math.max(0, g.shake - dt); g.flash = Math.max(0, g.flash - dt);
 
   // jogador
-  const inp = inputVec(), sp = PLAYER_SPEED * g.diff.speed * 0.95;
+  const down = g.t - g.downAt < FALL_TIME;                    // caído: sem controle
+  const inp = down ? { x: 0, y: 0 } : inputVec(), sp = PLAYER_SPEED * g.diff.speed * 0.95;
   let tx, ty;
-  if (g.auto) { tx = sp * (0.72 + 0.35 * inp.x); ty = inp.y * sp; }
+  if (down) { tx = 0; ty = 0; }
+  else if (g.auto) { tx = sp * (0.72 + 0.35 * inp.x); ty = inp.y * sp; }
   else { tx = inp.x * sp; ty = inp.y * sp; }
   const k = 1 - Math.exp(-14 * dt);
   p.vx += (tx - p.vx) * k; p.vy += (ty - p.vy) * k;
@@ -1231,8 +1242,8 @@ function update(dt) {
   }
 
   if (hit) {
-    g.lives--; g.inv = 1.6; g.shake = .3; g.flash = .25; sfx.hit();
-    p.x = Math.max(30, p.x - 80); p.vx = -120; p.vy = 0;
+    g.lives--; g.inv = FALL_TIME + 1.4; g.downAt = g.t; g.shake = .3; g.flash = .25; sfx.hit();      // cai, fica 1s parado e ainda ganha 1,4s de invulnerabilidade ao levantar
+    p.x = Math.max(30, p.x - 50); p.vx = -140; p.vy = 0;
     if (p.y < ROAD_TOP + PLAYER_R) { p.x = EGG_CX; p.y = ROAD_TOP + PLAYER_R; }   // estava sobre a coluna: volta para a pista
     if (g.lives <= 0) { endGame(false); }
   }
@@ -1256,6 +1267,7 @@ function draw() {
   const g = G;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, W, H);
+  if (state === 'intro' || state === 'menu') { drawIntro(); return; }
   if (band) { drawBand(); return; }
   if (quiz) { drawQuiz(); return; }
   if (frd && (state === 'fraud' || state === 'fraudEnd')) { drawFraudScene(); return; }
@@ -1431,7 +1443,8 @@ function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.a
 
 function drawPlayer(g) {
   const p = g.p;
-  if (g.inv > 0 && Math.floor(g.inv * 14) % 2 && state === 'play') return;
+  const ft = g.t - g.downAt, fell = ft >= 0 && ft < FALL_TIME;
+  if (!fell && g.inv > 0 && Math.floor(g.inv * 14) % 2 && state === 'play') return;
   if (g.over === 'win' && p.x > g.L - FINISH_PAD + 20) return;   // embarcou
   ctx.save(); ctx.translate(p.x, p.y);
   if (g.egg) {
@@ -1440,13 +1453,21 @@ function drawPlayer(g) {
     const k = t < EGG.sink ? 1 - ease(t / EGG.sink) : ease(clamp((t - EGG.back) / .6, 0, 1));
     ctx.globalAlpha = .25 + .75 * k; ctx.scale(.4 + .6 * k, .4 + .6 * k);
   }
-  Sprites.flavio(ctx, p.step, p.face, Math.hypot(p.vx, p.vy) > 15);
+  if (fell) {                                                    // cai para trás, fica deitado e se levanta no fim
+    const k = ft < FALL_ANIM ? ease(ft / FALL_ANIM) : ft > FALL_TIME - FALL_ANIM ? ease((FALL_TIME - ft) / FALL_ANIM) : 1;
+    ctx.translate(0, 11); ctx.rotate(-p.face * 1.5 * k); ctx.translate(0, -11);
+  }
+  Sprites.flavio(ctx, p.step, p.face, !fell && Math.hypot(p.vx, p.vy) > 15);
   if (g.cs && g.cs.t >= CUT.enter1) {                 // algemado
     ctx.strokeStyle = '#cfd6dd'; ctx.lineWidth = 1.8;
     ctx.beginPath(); ctx.moveTo(-9, 3.5); ctx.lineTo(9, 3.5); ctx.stroke();
     ctx.beginPath(); ctx.arc(-11.5, 3.5, 3.2, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(11.5, 3.5, 3.2, 0, 7); ctx.stroke();
   }
   ctx.restore();
+  if (fell && ft > FALL_ANIM && ft < FALL_TIME - FALL_ANIM) {      // estrelinhas de tontura
+    ctx.fillStyle = '#ffe14a';
+    for (let k = 0; k < 3; k++) { const a = g.t * 6 + k * 2.1; ctx.beginPath(); ctx.arc(p.x - p.face * 14 + Math.cos(a) * 12, p.y - 16 + Math.sin(a) * 4, 2.6, 0, 7); ctx.fill(); }
+  }
 }
 function drawEggScene(g) {
   const e = g.egg, t = e.t, s = 3.6, y0 = 340, jx = W / 2 + 29;
@@ -1522,7 +1543,7 @@ function drawFx(g) {
     const a = g.time < 1.6 ? 1 : clamp((2.4 - g.time) / 0.8, 0, 1);
     big(CONFIG.levelName, H / 2 - 6, 64, '#ffcf33', a);
     ctx.save(); ctx.globalAlpha = a; ctx.font = 'bold 22px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.6)';
-    const sub = `Chegue ao avião em ${fmtTime(TIME_LIMIT)}`; ctx.strokeText(sub, W / 2, H / 2 + 30); ctx.fillStyle = '#fff'; ctx.fillText(sub, W / 2, H / 2 + 30); ctx.restore();
+    const sub = `Chegue ao avião em ${fmtTime(g.diff.time || TIME_LIMIT)}`; ctx.strokeText(sub, W / 2, H / 2 + 30); ctx.fillStyle = '#fff'; ctx.fillText(sub, W / 2, H / 2 + 30); ctx.restore();
   }
   if (cs) {
     if (cs.t < 2.4) big(CONFIG.timeoutTitle.toUpperCase(), 92 + H / 2 * 0, 50, '#ff4040', cs.t < 1.6 ? 1 : clamp((2.4 - cs.t) / .8, 0, 1));
@@ -1587,6 +1608,254 @@ function drawHUD(g) {
   }
 }
 
+/* =========================================================
+   ABERTURA (arte conceitual animada) — "Bolso 26"
+   O Flávio tira a faixa presidencial do bolso; Lula e Xandão chegam apontando; ele corre e a faixa cai no chão.
+   Xandão segue correndo; o Lula volta, pega a faixa e foge de novo. Só então aparece o menu.
+   ========================================================= */
+const INTRO = { fx0: 440, FY: 332, S: 3.6, pull0: 1.0, pull1: 2.2, title0: 2.0, notice: 3.4, enter0: 3.0, enter1: 4.2, point0: 4.2, run0: 5.2, xT: 700, lT: 830,
+                chase0: 5.55, back0: 6.63, ret: 1.0, pick: .7, hold: .8, flee: .95, menu: 10.2, end: 10.5 };
+INTRO.pick0 = INTRO.back0 + INTRO.ret; INTRO.hold0 = INTRO.pick0 + INTRO.pick; INTRO.flee0 = INTRO.hold0 + INTRO.hold;
+const intro = { t: 0, drop: null, puffs: [], puffT: 0, menuShown: false };
+const FLOOR_SASH = INTRO.FY - 22;
+const introRun = t => Math.max(0, t - INTRO.run0);
+const introFlavioX = t => { const r = introRun(t); return INTRO.fx0 - 260 * r * r - 40 * r; };
+const introHand = t => {                                       // mão direita do Flávio em coordenadas do sprite (antes de virar)
+  const k = ease(clamp((t - INTRO.pull0) / (INTRO.pull1 - INTRO.pull0), 0, 1)), up = [17, -19], pocket = [9, 3.5];
+  return [pocket[0] + (up[0] - pocket[0]) * k, pocket[1] + (up[1] - pocket[1]) * k];
+};
+function introHeldPos(t) {                                     // onde fica a ponta de cima da faixa na mão do Flávio
+  const S = INTRO.S, OY = INTRO.FY - 12 * S, h = introHand(t);
+  return { x: introFlavioX(t) + h[0] * S + 2, y: OY + h[1] * S - 4 };
+}
+const chaseX = (tx, t) => { const c = t - INTRO.chase0; return tx - (260 * c + 520 * c * c); };
+function lulaIntro(t, sashX) {                                 // posição/pose do Lula em cada momento da cena
+  if (t < INTRO.enter0) return { x: 1500, face: -1, mode: 'off' };
+  if (t < INTRO.chase0) { const k = ease(clamp((t - INTRO.enter0 - .25) / (INTRO.enter1 - INTRO.enter0), 0, 1)); return { x: 1200 + (INTRO.lT - 1200) * k, face: -1, mode: t >= INTRO.point0 ? 'point' : k < 1 ? 'run' : 'stand' }; }
+  if (t < INTRO.back0) return { x: chaseX(INTRO.lT, t), face: -1, mode: 'run' };
+  const stopX = sashX - 62;
+  if (t < INTRO.pick0) { const k = ease(clamp((t - INTRO.back0) / INTRO.ret, 0, 1)); return { x: -60 + (stopX + 60) * k, face: 1, mode: k < .97 ? 'run' : 'stand' }; }
+  if (t < INTRO.hold0) return { x: stopX, face: 1, mode: 'pick' };
+  if (t < INTRO.flee0) return { x: stopX, face: 1, mode: 'hold' };
+  const c = t - INTRO.flee0; return { x: stopX + 300 * c + 600 * c * c, face: 1, mode: 'flee' };
+}
+function updateIntro(dt) {
+  const t = intro.t += dt, d = intro.drop;
+  if (!d && t >= INTRO.run0 + .12) { const h = introHeldPos(INTRO.run0 + .12); intro.drop = { x: h.x, y: h.y + 50, vx: -90, vy: -300, rot: .05, vr: -5, landed: false }; sfx.hit(); }
+  if (d && !d.landed) {
+    d.vy += 1800 * dt; d.y += d.vy * dt; d.x += d.vx * dt; d.rot += d.vr * dt;
+    if (d.y >= FLOOR_SASH) {
+      d.y = FLOOR_SASH; d.vy *= -.36; d.vx *= .5; d.vr *= .45; beep(180 + 40 * Math.random(), .07, 'triangle', .06, 90);
+      if (Math.abs(d.vy) < 70) { d.landed = true; d.vy = d.vx = d.vr = 0; }
+    }
+  } else if (d && d.landed) d.rot += (-.1 - d.rot) * Math.min(1, dt * 8);
+  intro.puffT -= dt;                                            // poeira nos pés de quem corre
+  if (intro.puffT <= 0) {
+    intro.puffT = .05;
+    if (t >= INTRO.run0 && t < INTRO.run0 + 1.5) intro.puffs.push({ x: introFlavioX(t) + 30, y: INTRO.FY + 2, t: 0 });
+    if (d && d.landed) { const L = lulaIntro(t, d.x); if (L.mode === 'run' || L.mode === 'flee') intro.puffs.push({ x: L.x - L.face * 30, y: INTRO.FY + 2, t: 0 }); }
+  }
+  intro.puffs.forEach(p => p.t += dt); intro.puffs = intro.puffs.filter(p => p.t < .5);
+  if (t >= INTRO.menu && !intro.menuShown) { intro.menuShown = true; showMenu(); }
+}
+function skipIntro() {
+  if (state !== 'intro' || intro.t < 1) return;
+  intro.t = INTRO.end; intro.puffs = [];
+  intro.drop = { x: 470, y: FLOOR_SASH, vx: 0, vy: 0, rot: -.1, vr: 0, landed: true };
+  intro.menuShown = true; showMenu();
+}
+function showMenu() {
+  state = 'menu';
+  $('#menu').classList.remove('hidden'); updateBest();
+  const unlocked = store.get('done', false), row = $('#phaseRow');
+  row.classList.toggle('hidden', !unlocked);
+  if (unlocked) {
+    const box = $('#phases'); box.innerHTML = '';
+    const names = ['1 · Band', '2 · Globo', '3 · 1º turno', '4 · 2º turno', '5 · Ponte'], starts = [startBand, startQuiz, () => startUrna(1), () => startUrna(2), startBridge];
+    names.forEach((n, i) => { const b = document.createElement('button'); b.className = 'choice small'; b.textContent = n; b.onclick = () => starts[i](); box.appendChild(b); });
+  }
+}
+
+let introBGc = null;
+function introBG() {
+  if (!introBGc) {
+    const cv = document.createElement('canvas'); cv.width = W * 2; cv.height = H * 2;
+    const c = cv.getContext('2d'); c.scale(2, 2); const TAU = Math.PI * 2, rnd = mulberry32(5), HZ = 238;
+    let g = c.createLinearGradient(0, 0, 0, HZ); g.addColorStop(0, '#171243'); g.addColorStop(.55, '#6a2b7c'); g.addColorStop(1, '#ff9a55'); c.fillStyle = g; c.fillRect(0, 0, W, HZ + 2);
+    for (let i = 0; i < 60; i++) { c.fillStyle = `rgba(255,255,255,${.2 + rnd() * .6})`; c.beginPath(); c.arc(rnd() * W, rnd() * 120, .6 + rnd() * 1.2, 0, TAU); c.fill(); }
+    g = c.createRadialGradient(480, HZ, 10, 480, HZ, 230); g.addColorStop(0, 'rgba(255,220,140,.85)'); g.addColorStop(1, 'rgba(255,160,90,0)'); c.fillStyle = g; c.fillRect(0, 0, W, HZ + 2);
+    c.fillStyle = '#ffe9a8'; c.beginPath(); c.arc(480, HZ, 74, Math.PI, TAU); c.fill();
+    // esplanada: prédios baixos e o Congresso (duas torres, cúpula e tigela)
+    c.fillStyle = '#1b0e38';
+    for (let x = 0; x < W; x += 34) { if (x > 360 && x < 600) continue; const h = 14 + rnd() * 30; c.fillRect(x, HZ - h, 30, h + 2); }
+    c.fillRect(372, HZ - 16, 216, 18); c.fillRect(448, HZ - 96, 24, 84); c.fillRect(488, HZ - 96, 24, 84);
+    c.beginPath(); c.arc(410, HZ - 16, 34, Math.PI, TAU); c.fill(); c.beginPath(); c.arc(552, HZ - 24, 34, 0, Math.PI); c.fill();
+    c.fillStyle = 'rgba(255,220,140,.5)'; for (let i = 0; i < 6; i++) { c.fillRect(452, HZ - 90 + i * 12, 4, 5); c.fillRect(492, HZ - 90 + i * 12, 4, 5); }
+    // ponte: pista, mureta e faixas
+    g = c.createLinearGradient(0, HZ, 0, 350); g.addColorStop(0, '#34304a'); g.addColorStop(1, '#17141f'); c.fillStyle = g; c.fillRect(0, HZ, W, 350 - HZ);
+    c.fillStyle = '#9a93ad'; c.fillRect(0, HZ, W, 9); c.fillStyle = '#5b5670'; c.fillRect(0, HZ + 9, W, 3);
+    c.fillStyle = '#ffd25a'; for (let x = 10; x < W; x += 90) c.fillRect(x, 296, 50, 4);
+    c.fillStyle = '#0b0912'; c.fillRect(0, 350, W, H - 350);
+    g = c.createLinearGradient(0, 340, 0, 372); g.addColorStop(0, 'rgba(255,200,120,.25)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 340, W, 32);
+    g = c.createRadialGradient(480, 280, 200, 480, 280, 640); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    introBGc = cv;
+  }
+  ctx.drawImage(introBGc, 0, 0, W, H);
+}
+
+/* ---- faixa presidencial: fita verde com listra amarela, franjas douradas e roseta ---- */
+const SASH = { N: 18, L: 150, W: 26 };
+function sashPts(kind, o) {
+  const N = SASH.N, L = SASH.L, pts = [];
+  for (let i = 0; i <= N; i++) {
+    const s = i / N;
+    if (kind === 'lying') {                                      // deitada (e caindo), com ondulação
+      const lx = (s - .5) * L * (o.len || 1), ly = Math.sin(s * 7.5 + (o.ph || 0)) * o.amp, c = Math.cos(o.rot), sn = Math.sin(o.rot);
+      pts.push([o.x + lx * c - ly * sn, o.y + (lx * sn + ly * c) * o.sq]);
+    } else if (kind === 'hang') pts.push([o.x + Math.sin(o.t * 3 + s * 4) * 9 * s, o.y + s * L * .92 * (o.len || 1)]);       // pendurada pela mão
+    else pts.push([o.x - o.dir * s * L * .95, o.y + Math.sin(s * 9 - o.t * 22) * 9 * s + s * 10]);                            // esvoaçando atrás de quem corre
+  }
+  return pts;
+}
+function drawSash(pts, w, glow) {
+  const n = pts.length, Lp = [], Rp = [], Lc = [], Rc = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len, [x, y] = pts[i];
+    Lp.push([x + nx * w / 2, y + ny * w / 2]); Rp.push([x - nx * w / 2, y - ny * w / 2]); Lc.push([x + nx * w * .15, y + ny * w * .15]); Rc.push([x - nx * w * .15, y - ny * w * .15]);
+  }
+  const poly = (A, B) => { ctx.beginPath(); A.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); for (let i = B.length - 1; i >= 0; i--) ctx.lineTo(B[i][0], B[i][1]); ctx.closePath(); };
+  ctx.save(); ctx.lineJoin = 'round';
+  if (glow) { ctx.shadowColor = `rgba(255,230,90,${glow})`; ctx.shadowBlur = 20; }
+  poly(Lp, Rp); ctx.fillStyle = '#12a24a'; ctx.fill(); ctx.shadowBlur = 0; ctx.lineWidth = 2; ctx.strokeStyle = '#06512a'; ctx.stroke();
+  poly(Lc, Rc); ctx.fillStyle = '#ffd60a'; ctx.fill();
+  // franjas douradas nas duas pontas
+  [[0, 1], [n - 1, n - 2]].forEach(([i, j]) => {
+    const [x, y] = pts[i], dx = x - pts[j][0], dy = y - pts[j][1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+    ctx.strokeStyle = '#e8b923'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+    for (let k = 0; k <= 6; k++) { const off = (k / 6 - .5) * w, sx = x + nx * off, sy = y + ny * off; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + ux * 11, sy + uy * 11); ctx.stroke(); }
+  });
+  // roseta dourada
+  const [rx, ry] = pts[Math.round(n * .3)], rg = ctx.createRadialGradient(rx - 2, ry - 2, 1, rx, ry, w * .62); rg.addColorStop(0, '#fff2a6'); rg.addColorStop(1, '#d99a0b');
+  ctx.fillStyle = rg; ctx.strokeStyle = '#7a5206'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(rx, ry, w * .62, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#12a24a'; ctx.beginPath(); ctx.arc(rx, ry, w * .3, 0, 7); ctx.fill(); ctx.fillStyle = '#ffd60a'; ctx.beginPath(); ctx.arc(rx, ry, w * .12, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function introBubble(x, y, text) {
+  ctx.save(); ctx.font = '900 18px system-ui, sans-serif'; ctx.textAlign = 'center'; const w = ctx.measureText(text).width + 26;
+  ctx.fillStyle = '#fff'; Sprites.rr(ctx, x - w / 2, y - 20, w, 36, 12); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - 6, y + 15); ctx.lineTo(x + 8, y + 15); ctx.lineTo(x + 20, y + 32); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#1a1226'; ctx.fillText(text, x, y + 5); ctx.restore();
+}
+function introPointArm(sleeve, skin, t) {                      // braço de apontar (espaço do sprite, olhando para a direita)
+  const hy = -13 + Math.sin(t * 16) * 1.8;
+  Sprites.limb(ctx, 10, -8, 30, hy, 5, sleeve); Sprites.ell(ctx, 30, hy, 2.6, 2.6, skin); Sprites.limb(ctx, 31, hy - .4, 37.5, hy - 1.6, 1.9, skin);
+}
+function lulaPickHand(t) {                                     // mão do Lula ao abaixar para pegar a faixa e erguê-la
+  const u = t - INTRO.pick0;
+  if (u < .3) { const k = ease(clamp(u / .3, 0, 1)); return [13 + 11 * k, 2.8 + 8.2 * k]; }
+  if (u < .7) { const k = ease(clamp((u - .3) / .4, 0, 1)); return [24 - 7 * k, 11 - 30 * k]; }
+  return [17, -19 + Math.sin(t * 10) * 1.2];
+}
+function drawLulaIntro(L, t, OY, S) {
+  const { x, face, mode } = L;
+  if (x > W + 180 || x < -180) return null;
+  const running = mode === 'run' || mode === 'flee', ph = t * (running ? 20 : 11), sleeve = '#1f2a46', skin = '#d9a587';
+  const u = t - INTRO.pick0, crouch = mode === 'pick' ? 11 * (u < .35 ? ease(clamp(u / .35, 0, 1)) : 1 - ease(clamp((u - .35) / .35, 0, 1))) : 0;
+  const bob = (running ? -Math.abs(Math.sin(ph)) * 3 : 0) + crouch;
+  ctx.save(); ctx.translate(x, OY + bob); ctx.scale(face * S, S); if (running) ctx.rotate(.1);
+  Sprites.lula(ctx, t, true);
+  const sw = running ? Math.sin(ph) * 4 : 0;
+  let hand = null;                                               // mão do braço da frente (para prender a faixa)
+  if (mode === 'point') { Sprites.limb(ctx, -10, -8, -13, 1, 5, sleeve); Sprites.ell(ctx, -13, 2.8, 2.5, 2.5, skin); introPointArm(sleeve, skin, t + 1); }
+  else if (mode === 'pick') { hand = lulaPickHand(t); Sprites.limb(ctx, -10, -8, -13, 1, 5, sleeve); Sprites.ell(ctx, -13, 2.8, 2.5, 2.5, skin); Sprites.limb(ctx, 10, -8, hand[0], hand[1], 5, sleeve); Sprites.ell(ctx, hand[0], hand[1] + 1.4, 2.6, 2.6, skin); }
+  else if (mode === 'hold') { hand = lulaPickHand(t); Sprites.limb(ctx, -10, -8, -17, -19 + Math.sin(t * 10 + 1) * 1.2, 5, sleeve); Sprites.ell(ctx, -17, -20, 2.6, 2.6, skin); Sprites.limb(ctx, 10, -8, hand[0], hand[1], 5, sleeve); Sprites.ell(ctx, hand[0], hand[1] - 1, 2.6, 2.6, skin); }
+  else if (mode === 'flee') { hand = [15, -9 + Math.sin(ph) * 2]; Sprites.limb(ctx, -10, -8, -12 - sw, 1, 5, sleeve); Sprites.ell(ctx, -12 - sw, 2.8, 2.5, 2.5, skin); Sprites.limb(ctx, 10, -8, hand[0], hand[1], 5, sleeve); Sprites.ell(ctx, hand[0], hand[1] + 1, 2.6, 2.6, skin); }
+  else { Sprites.limb(ctx, -10, -8, -13 + sw, 1, 5, sleeve); Sprites.ell(ctx, -13 + sw, 2.8, 2.5, 2.5, skin); Sprites.limb(ctx, 10, -8, 13 - sw, 1, 5, sleeve); Sprites.ell(ctx, 13 - sw, 2.8, 2.5, 2.5, skin); }
+  ctx.restore();
+  return hand ? { x: x + face * S * hand[0], y: OY + bob + S * hand[1] } : null;
+}
+function drawIntro() {
+  const t = intro.t, S = INTRO.S, FY = INTRO.FY, OY = FY - 12 * S, run = t >= INTRO.run0, rt = introRun(t), idle = state === 'menu' ? performance.now() / 1000 : t;
+  introBG();
+  const d = intro.drop, picked = t >= INTRO.pick0 + .3;
+  // faixa caída no chão (sombra, brilho e a própria faixa)
+  if (d && !picked) {
+    const lift = clamp((FLOOR_SASH - d.y) / 120, 0, 1), sq = 1 - .5 * (1 - lift), pulse = .5 + .5 * Math.sin(idle * 3);
+    ctx.fillStyle = `rgba(0,0,0,${.4 * (1 - lift * .7)})`; ctx.beginPath(); ctx.ellipse(d.x, FLOOR_SASH + 12, 78 * (1 - lift * .3), 11, 0, 0, 7); ctx.fill();
+    if (d.landed) {
+      const g = ctx.createRadialGradient(d.x, FLOOR_SASH, 4, d.x, FLOOR_SASH, 130); g.addColorStop(0, `rgba(255,214,90,${.22 + .12 * pulse})`); g.addColorStop(1, 'rgba(255,214,90,0)');
+      ctx.fillStyle = g; ctx.fillRect(d.x - 140, FLOOR_SASH - 90, 280, 180);
+    }
+    const lying = sashPts('lying', { x: d.x, y: d.y, rot: d.rot, sq, amp: d.landed ? 7 : 15, len: .9, ph: d.landed ? .6 : t * 8 });
+    if (t >= INTRO.pick0 + .3 - .01) { /* já começou a levantar */ }
+    drawSash(lying, SASH.W, d.landed ? .3 + .3 * pulse : 0);
+    if (d.landed && t > INTRO.run0 + 1.6) {                      // brilhinhos
+      ctx.fillStyle = '#fff6c0';
+      for (let i = 0; i < 4; i++) { const a = idle * 1.5 + i * 1.57, k = .5 + .5 * Math.sin(idle * 4 + i * 2), r = 5 * k, sx = d.x + Math.cos(a * 1.3 + i) * 70, sy = FLOOR_SASH - 4 + Math.sin(a + i) * 20;
+        ctx.beginPath(); ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r * .3, sy - r * .3); ctx.lineTo(sx + r, sy); ctx.lineTo(sx + r * .3, sy + r * .3); ctx.lineTo(sx, sy + r); ctx.lineTo(sx - r * .3, sy + r * .3); ctx.lineTo(sx - r, sy); ctx.lineTo(sx - r * .3, sy - r * .3); ctx.closePath(); ctx.fill(); }
+    }
+  }
+  intro.puffs.forEach(p => { const k = p.t / .5; ctx.fillStyle = `rgba(220,200,190,${.5 * (1 - k)})`; ctx.beginPath(); ctx.arc(p.x + k * 20, p.y - k * 10, 6 + k * 14, 0, 7); ctx.fill(); });
+
+  // Xandão (entra, aponta, sai correndo atrás do Flávio) e Lula (idem, mas volta para pegar a faixa)
+  const chase = t - INTRO.chase0, pointing = t >= INTRO.point0 && chase < 0;
+  let xx = 1500;
+  if (t >= INTRO.enter0) { xx = chase >= 0 ? chaseX(INTRO.xT, t) : 1200 + (INTRO.xT - 1200) * ease(clamp((t - INTRO.enter0) / (INTRO.enter1 - INTRO.enter0), 0, 1)); }
+  if (xx < W + 120 && xx > -180) {
+    const wk = chase >= 0 || Math.abs(xx - INTRO.xT) > 2;
+    ctx.save(); ctx.translate(xx, OY + (wk ? -Math.abs(Math.sin(t * 12)) * 3 : 0)); ctx.scale(-S, S); if (chase >= 0) ctx.rotate(.1);
+    Sprites.moraes(ctx, t, wk ? t * (chase >= 0 ? 20 : 11) : null, false, pointing); ctx.restore();
+  }
+  const L = lulaIntro(t, d ? d.x : 470), lhand = drawLulaIntro(L, t, OY, S);
+  if (lhand && d) {                                              // faixa na mão do Lula: sendo erguida, exibida ou esvoaçando na fuga
+    if (L.mode === 'pick') {
+      const k = ease(clamp((t - INTRO.pick0 - .3) / .4, 0, 1));
+      if (k > 0) {
+        const lying = sashPts('lying', { x: d.x, y: d.y, rot: d.rot, sq: .5, amp: 7, len: .9, ph: .6 }), hang = sashPts('hang', { x: lhand.x, y: lhand.y, t, len: 1 });
+        drawSash(lying.map((p, i) => [p[0] + (hang[i][0] - p[0]) * k, p[1] + (hang[i][1] - p[1]) * k]), SASH.W, 0);
+      }
+    } else if (L.mode === 'hold') drawSash(sashPts('hang', { x: lhand.x, y: lhand.y, t: t * 1.4, len: 1 }), SASH.W, .35);
+    else if (L.mode === 'flee') drawSash(sashPts('stream', { x: lhand.x, y: lhand.y, dir: L.face, t }), SASH.W, .25);
+  }
+
+  // Flávio
+  const fx = introFlavioX(t);
+  if (fx > -140) {
+    const step = rt * 14, bob = run ? -Math.abs(Math.sin(step)) * 6 : Math.sin(t * 2.2) * 1.2;
+    ctx.save(); ctx.translate(fx, OY + bob); ctx.scale(run ? -S : S, S); if (run) ctx.rotate(.12);
+    Sprites.flavio(ctx, step, 1, run, true);
+    const sleeve = '#2b303c', skin = '#dcab88', sw = Math.sin(step);
+    const la = run ? [-9 + sw * 6, 1 + Math.abs(Math.cos(step)) * 1.5] : [-12, 1];
+    Sprites.limb(ctx, -9.5, -8, la[0], la[1], 4.6, sleeve); Sprites.ell(ctx, la[0], la[1] + 1.8, 2.5, 2.5, skin);
+    let h = introHand(t);
+    if (run) { const k = clamp(rt / .14, 0, 1); h = [h[0] + (9 - sw * 6 - h[0]) * k, h[1] + (1 - h[1]) * k]; }
+    Sprites.limb(ctx, 9.5, -8, h[0], h[1], 4.6, sleeve); Sprites.ell(ctx, h[0], h[1] + 1.6, 2.5, 2.5, skin);
+    ctx.restore();
+    if (t >= INTRO.pull0 && !d) {                                // a faixa saindo do bolso e sendo erguida
+      const k = ease(clamp((t - INTRO.pull0) / (INTRO.pull1 - INTRO.pull0), 0, 1)), p = introHeldPos(t);
+      drawSash(sashPts('hang', { x: p.x, y: p.y, t: t * (t > INTRO.notice ? 3 : 1), len: .25 + .75 * k }), SASH.W, .4 * k);
+    }
+    if (t >= INTRO.notice && t < INTRO.run0) {                   // "!" de susto
+      ctx.save(); ctx.textAlign = 'center'; ctx.font = '900 56px system-ui'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineJoin = 'round'; ctx.fillStyle = '#ff4040';
+      const yy = OY - 36 * S - 6 - Math.abs(Math.sin(t * 14)) * 6; ctx.strokeText('!', fx, yy); ctx.fillText('!', fx, yy); ctx.restore();
+    }
+  }
+  if (pointing && t > INTRO.point0 + .1) { introBubble(xx - 30, 150, 'Parado aí!'); introBubble(L.x - 30, 118, 'Olha ele aí!'); }
+  if (L.mode === 'hold' && t > INTRO.hold0 + .1) introBubble(L.x + 10, 118, 'Agora é minha!');
+
+  // título
+  const ta = ease(clamp((t - INTRO.title0) / .6, 0, 1));
+  if (ta > 0) {
+    ctx.save(); ctx.translate(W / 2, 74); const sc = 1.35 - .35 * ta; ctx.scale(sc, sc); ctx.globalAlpha = ta; ctx.textAlign = 'left'; ctx.lineJoin = 'round';
+    ctx.font = '900 76px system-ui, sans-serif'; const wb = ctx.measureText('BOLSO ').width, w26 = ctx.measureText('26').width, x0 = -(wb + w26) / 2;
+    ctx.lineWidth = 12; ctx.strokeStyle = 'rgba(20,6,30,.85)'; ctx.strokeText('BOLSO ', x0, 0); ctx.strokeText('26', x0 + wb, 0);
+    ctx.fillStyle = '#fff'; ctx.fillText('BOLSO ', x0, 0);
+    const g = ctx.createLinearGradient(0, -60, 0, 8); g.addColorStop(0, '#fff4ae'); g.addColorStop(1, '#f59e1a'); ctx.fillStyle = g; ctx.fillText('26', x0 + wb, 0); ctx.restore();
+  }
+  if (state === 'intro' && t < .6) { ctx.fillStyle = `rgba(0,0,0,${1 - t / .6})`; ctx.fillRect(0, 0, W, H); }
+  if (state === 'intro' && t > 1 && t < INTRO.menu) { ctx.textAlign = 'center'; ctx.font = '13px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillText('Toque ou pressione qualquer tecla para pular', W / 2, H - 14); }
+}
+
 /* ---------- loop e resize ---------- */
 function resize() {
   const r = stage.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1598,7 +1867,8 @@ addEventListener('resize', resize);
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (band && (state === 'band' || state === 'duelEnd')) updateBand(dt);
+  if (state === 'intro') updateIntro(dt);
+  else if (band && (state === 'band' || state === 'duelEnd')) updateBand(dt);
   else if (quiz && (state === 'quiz' || state === 'duelEnd')) updateQuiz(dt);
   else if (state === 'play') update(dt);
   else if (state === 'cut') updateCut(dt);
@@ -1615,5 +1885,5 @@ initMenu(); initUrna(); resize();
 requestAnimationFrame(frame);
 
 // teste/depuração via console: window.__game
-window.__game = { get band() { return band; }, get quiz() { return quiz; }, startBand, startQuiz, get G() { return G; }, get state() { return state; }, get urna() { return urna; }, get frd() { return frd; }, get zn() { return zn; }, start: startBridge, startUrna, startFraud };
+window.__game = { get intro() { return intro; }, skipIntro, showMenu, get band() { return band; }, get quiz() { return quiz; }, startBand, startQuiz, get G() { return G; }, get state() { return state; }, get urna() { return urna; }, get frd() { return frd; }, get zn() { return zn; }, start: startBridge, startUrna, startFraud };
 })();

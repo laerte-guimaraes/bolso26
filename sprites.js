@@ -133,7 +133,7 @@ window.Sprites = (() => {
      sobrancelhas retas e escuras, olhos de pálpebra pesada com olheiras, nariz largo, boca fina e séria,
      terno preto, camisa azul-clara e gravata azul listrada. Sem óculos.
      `walk` = fase do passo (ou null parado); `hold` = segura algemas. */
-  function moraes(c, t, walk, hold) {
+  function moraes(c, t, walk, hold, point) {
     const skin = '#d8a47e', dark = '#b97f60', ws = walk == null ? 0 : Math.sin(walk) * 3.8;
     shadow(c, 14);
     // pernas e sapatos
@@ -151,7 +151,10 @@ window.Sprites = (() => {
     for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(-2.2, -8.6 + i * 2.1); c.lineTo(2.2, -10 + i * 2.1); c.stroke(); }
     // braços e mãos (uma com algemas)
     limb(c, -10, -8, -13 - ws * .4, 1, 5, '#1a1a20'); ell(c, -13 - ws * .4, 2.8, 2.5, 2.5, skin);
-    limb(c, 10, -8, 14, -3, 5, '#1a1a20'); ell(c, 14.6, -1.4, 2.5, 2.5, skin);
+    if (point) {                                                           // braço direito esticado, dedo em riste
+      const hy = -13 + Math.sin(t * 16) * 1.8;
+      limb(c, 10, -8, 30, hy, 5, '#1a1a20'); ell(c, 30, hy, 2.6, 2.6, skin); limb(c, 31, hy - .4, 37.5, hy - 1.6, 1.9, skin);
+    } else { limb(c, 10, -8, 14, -3, 5, '#1a1a20'); ell(c, 14.6, -1.4, 2.5, 2.5, skin); }
     if (hold) {
       c.strokeStyle = '#cfd6dd'; c.lineWidth = 1.7;
       c.beginPath(); c.arc(17, 2.8, 3.1, 0, TAU); c.stroke(); c.beginPath(); c.arc(21.5, 5.8, 3.1, 0, TAU); c.stroke();

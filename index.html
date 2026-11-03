@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#0b1d2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>26 no Bolso</title>
-  <meta name="description" content="26 no Bolso — jogo 2D no navegador.">
+  <title>Bolso 26</title>
+  <meta name="description" content="Bolso 26 — jogo 2D no navegador.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,7 +15,7 @@
     <canvas id="c"></canvas>
 
     <!-- Menu inicial -->
-    <section id="menu" class="overlay">
+    <section id="menu" class="overlay cine">
       <h1 id="title"></h1>
 
       <div class="row">
@@ -25,7 +25,11 @@
         </div>
       </div>
 
-      <button id="start" class="primary">Começar</button>
+      <div class="row hidden" id="phaseRow">
+        <div class="group"><h2>Jogar a partir da fase</h2><div id="phases" class="choices"></div></div>
+      </div>
+
+      <button id="start" class="primary">Começar novo jogo</button>
       <p class="hint">Debates: ← → andam, ESPAÇO pula, Z soco • respostas: 1–4 ou toque • Urna: teclado numérico e Enter • Ponte: setas / WASD ou arraste o dedo • M som • P pausa</p>
       <p id="best" class="hint"></p>
     </section>
